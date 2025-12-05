@@ -5,6 +5,7 @@
 use atomic_lib::utils::random_string;
 use atomic_lib::*;
 use criterion::{criterion_group, criterion_main, Criterion};
+use tokio::runtime::Runtime;
 
 fn random_atom_string() -> Atom {
     Atom::new(
@@ -37,37 +38,39 @@ fn random_resource(atom: &Atom) -> Resource {
 }
 
 fn criterion_benchmark(c: &mut Criterion) {
-    let store = Db::init_temp("bench").unwrap();
+    let rt = Runtime::new().unwrap();
+    let store = rt.block_on(Db::init_temp("bench")).unwrap();
 
     c.bench_function("add_resource", |b| {
-        b.iter(|| {
+        b.to_async(&rt).iter(|| async {
             let resource = random_resource(&random_atom_string());
             store
                 .add_resource_opts(&resource, true, true, false)
+                .await
                 .unwrap();
         })
     });
 
     c.bench_function("resource.save() string", |b| {
-        b.iter(|| {
+        b.to_async(&rt).iter(|| async {
             let mut resource = random_resource(&random_atom_string());
-            resource.save(&store).unwrap();
+            resource.save(&store).await.unwrap();
         })
     });
 
     c.bench_function("resource.save() array", |b| {
-        b.iter(|| {
+        b.to_async(&rt).iter(|| async {
             let mut resource = random_resource(&random_atom_array());
-            resource.save(&store).unwrap();
+            resource.save(&store).await.unwrap();
         })
     });
 
-    let big_resource = store
-        .get_resource_extended(
+    let big_resource = rt
+        .block_on(store.get_resource_extended(
             "https://localhost/collections",
             false,
             &agents::ForAgent::Public,
-        )
+        ))
         .unwrap();
 
     c.bench_function("resource.to_json_ad()", |b| {
@@ -77,20 +80,20 @@ fn criterion_benchmark(c: &mut Criterion) {
     });
 
     c.bench_function("resource.to_json_ld()", |b| {
-        b.iter(|| {
-            big_resource.to_json_ld(&store).unwrap();
+        b.to_async(&rt).iter(|| async {
+            big_resource.to_json_ld(&store).await.unwrap();
         })
     });
 
     c.bench_function("resource.to_json()", |b| {
-        b.iter(|| {
-            big_resource.to_json(&store).unwrap();
+        b.to_async(&rt).iter(|| async {
+            big_resource.to_json(&store).await.unwrap();
         })
     });
 
     c.bench_function("resource.to_n_triples()", |b| {
-        b.iter(|| {
-            big_resource.to_n_triples(&store).unwrap();
+        b.to_async(&rt).iter(|| async {
+            big_resource.to_n_triples(&store).await.unwrap();
         })
     });
 
